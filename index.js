@@ -1,9 +1,9 @@
 const express = require('express');
 const sql = require('mssql');
-
+const { poolPromise } = require('./db');
 const app = express();
 // Only allow requests from frontend EC2
-const allowedIP = '172.31.31.126'; // <-- replace with your frontend EC2 IP
+const allowedIP = ['172.31.31.126', '::1', 'localhost']; // <-- replace with your frontend EC2 IP
 app.use((req, res, next) => {
     const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
@@ -14,8 +14,19 @@ app.use((req, res, next) => {
     }
 });
 
-const port = 3000;
-
+const ports = 3000;
+// SQL Server config
+const config = {
+    user: 'admin',
+    password: 'Abdul1101',
+    server: 'iotccl.clw80w48eyrn.us-east-1.rds.amazonaws.com',
+    database: 'Sensor Data',
+    port: 1433,
+    options: {
+        encrypt: true,
+        trustServerCertificate: true,
+    },
+};
 
 
 // Middleware to parse JSON
@@ -33,18 +44,11 @@ app.get('/', (req, res) => {
 
 
 
-// SQL Server config
-const config = {
-    user: 'admin',
-    password: 'Abdul1101',
-    server: 'iotccl.clw80w48eyrn.us-east-1.rds.amazonaws.com',
-    database: 'Sensor Data',
-    port: 1433,
-    options: {
-        encrypt: true,
-        trustServerCertificate: true,
-    },
-};
+
+
+
+//API to send sensor data to the front end
+app.get('/api/sensordata',)
 
 // API to receive sensor data and store in DB
 app.post('/api/sensor', async (req, res) => {
@@ -72,8 +76,8 @@ app.post('/api/sensor', async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+app.listen(ports, () => {
+    console.log(`Server running on http://localhost:${ports}`);
 });
 
 app.post('/api/inventory', async (req, res) => {
@@ -107,4 +111,35 @@ app.post('/api/inventory', async (req, res) => {
 });
 
 
+app.get('/api/sensordata', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool
+            .request()
+            .query('SELECT TOP 1 temperature, humidity, vibration_detected FROM SData ORDER BY id DESC');
 
+        const row = result.recordset[0];
+        res.json({
+            temperature: row.temperature,
+            humidity: row.humidity,
+            vibration_detected: row.vibration_detected
+        });
+    } catch (err) {
+        console.error('Error fetching sensor data:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+app.get('/api/inventory', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool
+            .request()
+            .query('SELECT prod_id, prod_count FROM [Inventory]');
+
+        res.json(result.recordset); // Sends array of product rows
+    } catch (err) {
+        console.error('Error fetching inventory:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
